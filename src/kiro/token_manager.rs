@@ -376,6 +376,10 @@ struct CredentialEntry {
     failure_count: u32,
     /// 是否已禁用
     disabled: bool,
+    /// API 调用使用次数
+    used_count: u64,
+    /// 使用配额限制（0 表示无限制）
+    quota: u64,
 }
 
 // ============================================================================
@@ -400,6 +404,10 @@ pub struct CredentialEntrySnapshot {
     pub has_profile_arn: bool,
     /// Token 过期时间
     pub expires_at: Option<String>,
+    /// API 调用使用次数
+    pub used_count: u64,
+    /// 使用配额限制（0 表示无限制）
+    pub quota: u64,
 }
 
 /// 凭据管理器状态快照
@@ -492,6 +500,8 @@ impl MultiTokenManager {
                     credentials: cred,
                     failure_count: 0,
                     disabled: false,
+                    used_count: 0,
+                    quota: 0,
                 }
             })
             .collect();
@@ -757,7 +767,8 @@ impl MultiTokenManager {
         let mut entries = self.entries.lock();
         if let Some(entry) = entries.iter_mut().find(|e| e.id == id) {
             entry.failure_count = 0;
-            tracing::debug!("凭据 #{} API 调用成功", id);
+            entry.used_count += 1;
+            tracing::debug!("凭据 #{} API 调用成功（使用次数: {}）", id, entry.used_count);
         }
     }
 
@@ -870,6 +881,8 @@ impl MultiTokenManager {
                     auth_method: e.credentials.auth_method.clone(),
                     has_profile_arn: e.credentials.profile_arn.is_some(),
                     expires_at: e.credentials.expires_at.clone(),
+                    used_count: e.used_count,
+                    quota: e.quota,
                 })
                 .collect(),
             current_id,
@@ -990,6 +1003,176 @@ impl MultiTokenManager {
         };
 
         get_usage_limits(&credentials, &self.config, &token, self.proxy.as_ref()).await
+    }
+
+    /// 添加新凭据（Admin API）
+    ///
+    /// # Arguments
+    /// * `credentials` - 新凭据信息
+    /// * `quota` - 使用配额限制（0 表示无限制）
+    ///
+    /// # Returns
+    /// 新凭据的 ID
+    pub fn add_credential(&self, mut credentials: KiroCredentials, quota: u64) -> anyhow::Result<u64> {
+        use std::sync::atomic::Ordering;
+
+        // 分配新 ID
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        credentials.id = Some(id);
+
+        // 创建新条目
+        let entry = CredentialEntry {
+            id,
+            credentials,
+            failure_count: 0,
+            disabled: false,
+            used_count: 0,
+            quota,
+        };
+
+        // 添加到列表
+        {
+            let mut entries = self.entries.lock();
+            entries.push(entry);
+        }
+
+        // 持久化更改
+        self.persist_credentials()?;
+
+        tracing::info!("已添加新凭据 #{}", id);
+        Ok(id)
+    }
+
+    /// 删除凭据（Admin API）
+    ///
+    /// # Arguments
+    /// * `id` - 要删除的凭据 ID
+    ///
+    /// # Returns
+    /// - `Ok(())` - 删除成功
+    /// - `Err(_)` - 凭据不存在或是当前活跃凭据且无其他可用凭据
+    pub fn delete_credential(&self, id: u64) -> anyhow::Result<()> {
+        {
+            let mut entries = self.entries.lock();
+            let mut current_id = self.current_id.lock();
+
+            // 检查凭据是否存在
+            let entry_index = entries
+                .iter()
+                .position(|e| e.id == id)
+                .ok_or_else(|| anyhow::anyhow!("凭据不存在: {}", id))?;
+
+            // 如果删除的是当前活跃凭据，需要先切换到其他凭据
+            if *current_id == id {
+                // 查找其他可用凭据
+                let next_credential = entries
+                    .iter()
+                    .filter(|e| e.id != id && !e.disabled)
+                    .min_by_key(|e| e.credentials.priority);
+
+                if let Some(next) = next_credential {
+                    *current_id = next.id;
+                    tracing::info!(
+                        "删除当前凭据前，已切换到凭据 #{}（优先级 {}）",
+                        next.id,
+                        next.credentials.priority
+                    );
+                } else {
+                    // 没有其他可用凭据，检查是否还有其他凭据（即使被禁用）
+                    let any_other = entries.iter().any(|e| e.id != id);
+                    if !any_other {
+                        anyhow::bail!("无法删除最后一个凭据");
+                    }
+                    // 有其他凭据但都被禁用，选择第一个
+                    if let Some(first) = entries.iter().find(|e| e.id != id) {
+                        *current_id = first.id;
+                        tracing::warn!(
+                            "删除当前凭据前，已切换到凭据 #{}（已禁用）",
+                            first.id
+                        );
+                    }
+                }
+            }
+
+            // 删除凭据
+            entries.remove(entry_index);
+        }
+
+        // 持久化更改
+        self.persist_credentials()?;
+
+        tracing::info!("已删除凭据 #{}", id);
+        Ok(())
+    }
+
+    /// 批量删除所有已禁用的凭据（Admin API）
+    ///
+    /// # Returns
+    /// - `Ok(count)` - 删除成功，返回删除的凭据数量
+    /// - `Err(_)` - 如果所有凭据都被禁用（无法删除全部）
+    pub fn delete_all_disabled(&self) -> anyhow::Result<usize> {
+        let deleted_count;
+        {
+            let mut entries = self.entries.lock();
+            let mut current_id = self.current_id.lock();
+
+            // 找出所有禁用的凭据 ID
+            let disabled_ids: Vec<u64> = entries
+                .iter()
+                .filter(|e| e.disabled)
+                .map(|e| e.id)
+                .collect();
+
+            if disabled_ids.is_empty() {
+                return Ok(0);
+            }
+
+            // 检查是否所有凭据都被禁用
+            let enabled_count = entries.iter().filter(|e| !e.disabled).count();
+            if enabled_count == 0 {
+                anyhow::bail!("无法删除所有凭据：至少需要保留一个启用的凭据");
+            }
+
+            // 如果当前凭据在禁用列表中，需要先切换
+            if disabled_ids.contains(&*current_id) {
+                // 找到一个启用的凭据
+                if let Some(next) = entries
+                    .iter()
+                    .filter(|e| !e.disabled)
+                    .min_by_key(|e| e.credentials.priority)
+                {
+                    *current_id = next.id;
+                    tracing::info!(
+                        "批量删除前，已切换到凭据 #{}（优先级 {}）",
+                        next.id,
+                        next.credentials.priority
+                    );
+                }
+            }
+
+            // 删除所有禁用的凭据
+            deleted_count = disabled_ids.len();
+            entries.retain(|e| !e.disabled);
+        }
+
+        // 持久化更改
+        self.persist_credentials()?;
+
+        tracing::info!("已批量删除 {} 个禁用凭据", deleted_count);
+        Ok(deleted_count)
+    }
+
+    /// 设置凭据配额（Admin API）
+    pub fn set_quota(&self, id: u64, quota: u64) -> anyhow::Result<()> {
+        {
+            let mut entries = self.entries.lock();
+            let entry = entries
+                .iter_mut()
+                .find(|e| e.id == id)
+                .ok_or_else(|| anyhow::anyhow!("凭据不存在: {}", id))?;
+            entry.quota = quota;
+        }
+        Ok(())
     }
 }
 

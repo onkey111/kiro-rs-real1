@@ -1,0 +1,25 @@
+# Bỏ qua thư mục build
+target/
+
+# Bỏ qua file cấu hình thực tế (chứa thông tin nhạy cảm)
+config.json
+credentials.json
+
+# Bỏ qua các file IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Bỏ qua các file git
+.git/
+.gitignore
+
+# Bỏ qua các file không cần thiết
+*.md
+!README.md
+CLAUDE.md
+AGENTS.md
+test.json
+tools/
+

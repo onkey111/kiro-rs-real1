@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kiro Credentials Admin</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; min-height: 100vh; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 { color: #58a6ff; margin-bottom: 20px; font-size: 24px; }
+        h2 { color: #8b949e; font-size: 18px; margin: 20px 0 10px; }
+        .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; }
+        .btn-primary { background: #238636; color: white; }
+        .btn-primary:hover { background: #2ea043; }
+        .btn-secondary { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; }
+        .btn-secondary:hover { background: #30363d; }
+        .btn-danger { background: #da3633; color: white; }
+        .btn-danger:hover { background: #f85149; }
+        .btn-sm { padding: 4px 8px; font-size: 12px; }
+        .stats { display: flex; gap: 20px; margin-bottom: 20px; flex-wrap: wrap; }
+        .stat-card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 16px 20px; min-width: 120px; }
+        .stat-card .label { color: #8b949e; font-size: 12px; margin-bottom: 4px; }
+        .stat-card .value { color: #58a6ff; font-size: 24px; font-weight: 600; }
+        table { width: 100%; border-collapse: collapse; background: #161b22; border-radius: 8px; overflow: hidden; }
+        th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid #21262d; }
+        th { background: #21262d; color: #8b949e; font-weight: 500; font-size: 12px; text-transform: uppercase; }
+        td { font-size: 14px; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+        .badge-success { background: rgba(46, 160, 67, 0.2); color: #3fb950; }
+        .badge-danger { background: rgba(248, 81, 73, 0.2); color: #f85149; }
+        .badge-warning { background: rgba(210, 153, 34, 0.2); color: #d29922; }
+        .badge-info { background: rgba(56, 139, 253, 0.2); color: #58a6ff; }
+        .current-marker { color: #3fb950; font-weight: bold; }
+        .form-section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin-top: 20px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; color: #8b949e; font-size: 12px; margin-bottom: 5px; }
+        .form-group input, .form-group select { width: 100%; max-width: 400px; padding: 8px 12px; border: 1px solid #30363d; border-radius: 6px; background: #0d1117; color: #c9d1d9; }
+        .form-row { display: flex; gap: 20px; flex-wrap: wrap; }
+        .form-row .form-group { flex: 1; min-width: 200px; }
+        .error { background: rgba(248, 81, 73, 0.1); border: 1px solid rgba(248, 81, 73, 0.4); border-radius: 6px; padding: 12px 16px; color: #f85149; margin-bottom: 16px; }
+        .success { background: rgba(46, 160, 67, 0.1); border: 1px solid rgba(46, 160, 67, 0.4); border-radius: 6px; padding: 12px 16px; color: #3fb950; margin-bottom: 16px; }
+        .hidden { display: none; }
+        .actions { display: flex; gap: 5px; flex-wrap: wrap; }
+        .refresh-btn { margin-left: 10px; }
+        .btn-info { background: #1f6feb; color: white; }
+        .btn-info:hover { background: #388bfd; }
+        .quota-row { background: #0d1117; }
+        .quota-row td { padding: 0; border-bottom: 1px solid #30363d; }
+        .quota-row-content { padding: 16px; }
+        .quota-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 12px; }
+        .quota-item { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 12px; }
+        .quota-item .label { color: #8b949e; font-size: 11px; margin-bottom: 4px; text-transform: uppercase; }
+        .quota-item .value { color: #c9d1d9; font-size: 16px; font-weight: 600; }
+        .quota-item .value.subscription { color: #a371f7; }
+        .quota-item .value.usage { color: #58a6ff; }
+        .quota-item .value.remaining { color: #3fb950; }
+        .quota-item .value.remaining.low { color: #d29922; }
+        .quota-item .value.remaining.critical { color: #f85149; }
+        .progress-bar-wrapper { background: #21262d; border-radius: 6px; height: 20px; overflow: hidden; position: relative; }
+        .progress-bar { height: 100%; border-radius: 6px; transition: width 0.3s ease, background 0.3s ease; }
+        .progress-bar.low { background: linear-gradient(90deg, #238636, #d29922); }
+        .progress-bar.medium { background: linear-gradient(90deg, #238636, #58a6ff); }
+        .progress-bar.high { background: linear-gradient(90deg, #d29922, #f85149); }
+        .progress-bar.critical { background: linear-gradient(90deg, #f85149, #da3633); }
+        .progress-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 11px; font-weight: 600; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
+        .quota-loading { text-align: center; padding: 20px; color: #8b949e; }
+        .quota-error { background: rgba(248, 81, 73, 0.1); border: 1px solid rgba(248, 81, 73, 0.4); border-radius: 6px; padding: 12px 16px; color: #f85149; }
+        .quota-close { float: right; cursor: pointer; color: #8b949e; font-size: 18px; line-height: 1; }
+        .quota-close:hover { color: #c9d1d9; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔑 Kiro Credentials Admin <button class="btn btn-secondary refresh-btn" onclick="loadCredentials()">Refresh</button></h1>
+        <div id="message" class="hidden"></div>
+        <div id="content">
+            <div class="stats" id="stats"></div>
+
+            <h2>Credentials <button class="btn btn-sm btn-danger" onclick="deleteAllDisabled()" title="Delete all disabled credentials" style="margin-left: 10px;">🗑️ Delete All Disabled</button></h2>
+            <table><thead><tr>
+                <th>ID</th><th>Priority</th><th>Status</th><th>Failures</th><th>Used</th><th>Quota</th><th>Current</th><th>Auth</th><th>Expires</th><th>Actions</th>
+            </tr></thead><tbody id="credentialsTable"></tbody></table>
+            <div class="form-section">
+                <h2>Add New Credential</h2>
+                <div class="form-row">
+                    <div class="form-group"><label>Refresh Token *</label><input type="text" id="newRefreshToken" placeholder="Required"></div>
+                    <div class="form-group"><label>Auth Method</label><select id="newAuthMethod"><option value="social">Social</option><option value="idc">IdC</option><option value="builder-id">Builder ID</option></select></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Priority</label><input type="number" id="newPriority" value="0" min="0"></div>
+                    <div class="form-group"><label>Quota (0=unlimited)</label><input type="number" id="newQuota" value="0" min="0"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Profile ARN (optional)</label><input type="text" id="newProfileArn" placeholder="arn:aws:..."></div>
+                    <div class="form-group"><label>Access Token (optional)</label><input type="text" id="newAccessToken"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Client ID (IdC only)</label><input type="text" id="newClientId"></div>
+                    <div class="form-group"><label>Client Secret (IdC only)</label><input type="text" id="newClientSecret"></div>
+                </div>
+                <button class="btn btn-primary" onclick="addCredential()">Add Credential</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        const API_BASE = '/api/admin';
+        // Track which credential's quota row is currently expanded
+        let expandedQuotaId = null;
+
+        function showMessage(msg, isError) {
+            const el = document.getElementById('message');
+            el.className = isError ? 'error' : 'success';
+            el.textContent = msg;
+            el.classList.remove('hidden');
+            setTimeout(() => el.classList.add('hidden'), 3000);
+        }
+        async function apiCall(method, path, body) {
+            const res = await fetch(API_BASE + path, {
+                method, headers: { 'Content-Type': 'application/json' },
+                body: body ? JSON.stringify(body) : undefined
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error?.message || 'Request failed');
+            return data;
+        }
+        async function loadCredentials() {
+            try {
+                const data = await apiCall('GET', '/credentials');
+                document.getElementById('stats').innerHTML = `
+                    <div class="stat-card"><div class="label">Total</div><div class="value">${data.total}</div></div>
+                    <div class="stat-card"><div class="label">Available</div><div class="value">${data.available}</div></div>
+                    <div class="stat-card"><div class="label">Current ID</div><div class="value">#${data.currentId}</div></div>`;
+                document.getElementById('credentialsTable').innerHTML = data.credentials.map(c => `<tr id="cred-row-${c.id}">
+                    <td>#${c.id}</td>
+                    <td>${c.priority}</td>
+                    <td><span class="badge ${c.disabled ? 'badge-danger' : 'badge-success'}">${c.disabled ? 'Disabled' : 'Active'}</span></td>
+                    <td>${c.failureCount}</td>
+                    <td>${c.usedCount}</td>
+                    <td>${c.quota === 0 ? '∞' : c.quota}</td>
+                    <td>${c.isCurrent ? '<span class="current-marker">★</span>' : ''}</td>
+                    <td><span class="badge badge-info">${c.authMethod || 'social'}</span></td>
+                    <td>${c.expiresAt ? new Date(c.expiresAt).toLocaleString() : '-'}</td>
+                    <td class="actions">
+                        <button class="btn btn-sm btn-info" onclick="toggleQuotaRow(${c.id})" title="Check quota">📊</button>
+                        <button class="btn btn-sm ${c.disabled ? 'btn-primary' : 'btn-danger'}" onclick="toggleDisabled(${c.id}, ${!c.disabled})">${c.disabled ? 'Enable' : 'Disable'}</button>
+                        <button class="btn btn-sm btn-secondary" onclick="resetCredential(${c.id})">Reset</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteCredential(${c.id})" title="Delete credential">🗑️</button>
+                    </td>
+                </tr>`).join('');
+                // Re-expand quota row if it was previously expanded
+                if (expandedQuotaId !== null) {
+                    const credExists = data.credentials.some(c => c.id === expandedQuotaId);
+                    if (credExists) {
+                        loadQuotaForCredential(expandedQuotaId);
+                    } else {
+                        expandedQuotaId = null;
+                    }
+                }
+            } catch (e) { showMessage(e.message, true); }
+        }
+
+        async function toggleQuotaRow(id) {
+            // If clicking the same credential, close it
+            if (expandedQuotaId === id) {
+                closeQuotaRow(id);
+                expandedQuotaId = null;
+                return;
+            }
+            // Close any previously expanded row
+            if (expandedQuotaId !== null) {
+                closeQuotaRow(expandedQuotaId);
+            }
+            // Expand the new row
+            expandedQuotaId = id;
+            await loadQuotaForCredential(id);
+        }
+
+        function closeQuotaRow(id) {
+            const quotaRow = document.getElementById(`quota-row-${id}`);
+            if (quotaRow) {
+                quotaRow.remove();
+            }
+        }
+
+        async function loadQuotaForCredential(id) {
+            const credRow = document.getElementById(`cred-row-${id}`);
+            if (!credRow) return;
+
+            // Remove existing quota row if any
+            closeQuotaRow(id);
+
+            // Create and insert quota row
+            const quotaRow = document.createElement('tr');
+            quotaRow.id = `quota-row-${id}`;
+            quotaRow.className = 'quota-row';
+            quotaRow.innerHTML = `<td colspan="10"><div class="quota-row-content"><div class="quota-loading">Loading quota information for credential #${id}...</div></div></td>`;
+            credRow.insertAdjacentElement('afterend', quotaRow);
+
+            try {
+                const data = await apiCall('GET', `/credentials/${id}/balance`);
+                renderInlineQuotaInfo(id, data);
+            } catch (e) {
+                const quotaContent = quotaRow.querySelector('.quota-row-content');
+                quotaContent.innerHTML = `<span class="quota-close" onclick="toggleQuotaRow(${id})">×</span><div class="quota-error">Failed to load quota: ${e.message}</div>`;
+            }
+        }
+
+        function renderInlineQuotaInfo(id, data) {
+            const quotaRow = document.getElementById(`quota-row-${id}`);
+            if (!quotaRow) return;
+
+            const percentage = data.usagePercentage || 0;
+            const remaining = data.remaining || 0;
+            const usageLimit = data.usageLimit || 0;
+            const currentUsage = data.currentUsage || 0;
+
+            // Determine progress bar class based on usage percentage
+            let progressClass = 'medium';
+            let remainingClass = 'remaining';
+            if (percentage >= 90) {
+                progressClass = 'critical';
+                remainingClass = 'remaining critical';
+            } else if (percentage >= 75) {
+                progressClass = 'high';
+                remainingClass = 'remaining low';
+            } else if (percentage >= 50) {
+                progressClass = 'low';
+            }
+
+            // Format next reset time
+            let nextResetDisplay = '-';
+            if (data.nextResetAt) {
+                const resetDate = new Date(data.nextResetAt * 1000);
+                nextResetDisplay = resetDate.toLocaleString();
+            }
+
+            const quotaContent = quotaRow.querySelector('.quota-row-content');
+            quotaContent.innerHTML = `
+                <span class="quota-close" onclick="toggleQuotaRow(${id})" title="Close">×</span>
+                <div class="quota-grid">
+                    <div class="quota-item">
+                        <div class="label">Subscription</div>
+                        <div class="value subscription">${data.subscriptionTitle || 'Unknown'}</div>
+                    </div>
+                    <div class="quota-item">
+                        <div class="label">Current Usage</div>
+                        <div class="value usage">${formatNumber(currentUsage)}</div>
+                    </div>
+                    <div class="quota-item">
+                        <div class="label">Usage Limit</div>
+                        <div class="value">${formatNumber(usageLimit)}</div>
+                    </div>
+                    <div class="quota-item">
+                        <div class="label">Remaining</div>
+                        <div class="value ${remainingClass}">${formatNumber(remaining)}</div>
+                    </div>
+                    <div class="quota-item">
+                        <div class="label">Next Reset</div>
+                        <div class="value" style="font-size: 12px;">${nextResetDisplay}</div>
+                    </div>
+                </div>
+                <div class="progress-bar-wrapper">
+                    <div class="progress-bar ${progressClass}" style="width: ${Math.min(percentage, 100)}%"></div>
+                    <div class="progress-text">${percentage.toFixed(1)}% Used</div>
+                </div>
+            `;
+        }
+
+        function formatNumber(num) {
+            if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M';
+            if (num >= 1000) return (num / 1000).toFixed(2) + 'K';
+            return num.toFixed(2);
+        }
+        async function toggleDisabled(id, disabled) {
+            try { await apiCall('POST', `/credentials/${id}/disabled`, { disabled }); loadCredentials(); showMessage(`Credential #${id} ${disabled ? 'disabled' : 'enabled'}`); }
+            catch (e) { showMessage(e.message, true); }
+        }
+        async function resetCredential(id) {
+            try { await apiCall('POST', `/credentials/${id}/reset`); loadCredentials(); showMessage(`Credential #${id} reset`); }
+            catch (e) { showMessage(e.message, true); }
+        }
+        async function deleteCredential(id) {
+            if (!confirm(`Are you sure you want to delete credential #${id}?\n\nThis action cannot be undone.`)) {
+                return;
+            }
+            try {
+                await apiCall('DELETE', `/credentials/${id}`);
+                showMessage(`Credential #${id} deleted`);
+                if (expandedQuotaId === id) {
+                    expandedQuotaId = null;
+                }
+                loadCredentials();
+            } catch (e) { showMessage(e.message, true); }
+        }
+        async function deleteAllDisabled() {
+            // First check how many disabled credentials there are
+            const data = await apiCall('GET', '/credentials');
+            const disabledCount = data.credentials.filter(c => c.disabled).length;
+
+            if (disabledCount === 0) {
+                showMessage('No disabled credentials to delete');
+                return;
+            }
+
+            // Check if all credentials are disabled
+            if (disabledCount === data.credentials.length) {
+                showMessage('Cannot delete all credentials. At least one enabled credential must remain.', true);
+                return;
+            }
+
+            if (!confirm(`Are you sure you want to delete all ${disabledCount} disabled credential(s)?\n\nThis action cannot be undone.`)) {
+                return;
+            }
+            try {
+                const res = await apiCall('DELETE', '/credentials/disabled');
+                showMessage(res.message);
+                expandedQuotaId = null;
+                loadCredentials();
+            } catch (e) { showMessage(e.message, true); }
+        }
+        async function addCredential() {
+            const refreshToken = document.getElementById('newRefreshToken').value;
+            if (!refreshToken) { showMessage('Refresh token is required', true); return; }
+            try {
+                const body = {
+                    refreshToken, authMethod: document.getElementById('newAuthMethod').value,
+                    priority: parseInt(document.getElementById('newPriority').value) || 0,
+                    quota: parseInt(document.getElementById('newQuota').value) || 0,
+                    profileArn: document.getElementById('newProfileArn').value || undefined,
+                    accessToken: document.getElementById('newAccessToken').value || undefined,
+                    clientId: document.getElementById('newClientId').value || undefined,
+                    clientSecret: document.getElementById('newClientSecret').value || undefined
+                };
+                const res = await apiCall('POST', '/credentials', body);
+                showMessage(res.message); loadCredentials();
+                document.getElementById('newRefreshToken').value = '';
+            } catch (e) { showMessage(e.message, true); }
+        }
+        // Auto-load credentials on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadCredentials();
+        });
+    </script>
+</body>
+</html>
+

@@ -38,6 +38,10 @@ pub struct CredentialStatusItem {
     pub auth_method: Option<String>,
     /// 是否有 Profile ARN
     pub has_profile_arn: bool,
+    /// API 调用使用次数
+    pub used_count: u64,
+    /// 使用配额限制（0 表示无限制）
+    pub quota: u64,
 }
 
 // ============ 操作请求 ============
@@ -56,6 +60,48 @@ pub struct SetDisabledRequest {
 pub struct SetPriorityRequest {
     /// 新优先级值
     pub priority: u32,
+}
+
+/// 添加凭据请求
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddCredentialRequest {
+    /// 刷新令牌
+    pub refresh_token: String,
+    /// 访问令牌（可选）
+    #[serde(default)]
+    pub access_token: Option<String>,
+    /// Profile ARN（可选）
+    #[serde(default)]
+    pub profile_arn: Option<String>,
+    /// 认证方式 (social / idc / builder-id)，默认 social
+    #[serde(default = "default_auth_method")]
+    pub auth_method: String,
+    /// OIDC Client ID (IdC 认证需要)
+    #[serde(default)]
+    pub client_id: Option<String>,
+    /// OIDC Client Secret (IdC 认证需要)
+    #[serde(default)]
+    pub client_secret: Option<String>,
+    /// 凭据优先级（数字越小优先级越高，默认为 0）
+    #[serde(default)]
+    pub priority: u32,
+    /// 使用配额限制（0 表示无限制）
+    #[serde(default)]
+    pub quota: u64,
+}
+
+fn default_auth_method() -> String {
+    "social".to_string()
+}
+
+/// 添加凭据响应
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddCredentialResponse {
+    pub success: bool,
+    pub id: u64,
+    pub message: String,
 }
 
 // ============ 余额查询 ============
@@ -94,6 +140,30 @@ impl SuccessResponse {
         Self {
             success: true,
             message: message.into(),
+        }
+    }
+}
+
+/// 批量删除响应
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BulkDeleteResponse {
+    pub success: bool,
+    pub deleted_count: usize,
+    pub message: String,
+}
+
+impl BulkDeleteResponse {
+    pub fn new(deleted_count: usize) -> Self {
+        let message = if deleted_count == 0 {
+            "没有禁用的凭据需要删除".to_string()
+        } else {
+            format!("已删除 {} 个禁用凭据", deleted_count)
+        };
+        Self {
+            success: true,
+            deleted_count,
+            message,
         }
     }
 }

@@ -8,7 +8,7 @@ use axum::{
 
 use super::{
     middleware::AdminState,
-    types::{SetDisabledRequest, SetPriorityRequest, SuccessResponse},
+    types::{AddCredentialRequest, BulkDeleteResponse, SetDisabledRequest, SetPriorityRequest, SuccessResponse},
 };
 
 /// GET /api/admin/credentials
@@ -16,6 +16,18 @@ use super::{
 pub async fn get_all_credentials(State(state): State<AdminState>) -> impl IntoResponse {
     let response = state.service.get_all_credentials();
     Json(response)
+}
+
+/// POST /api/admin/credentials
+/// 添加新凭据
+pub async fn add_credential(
+    State(state): State<AdminState>,
+    Json(payload): Json<AddCredentialRequest>,
+) -> impl IntoResponse {
+    match state.service.add_credential(payload) {
+        Ok(response) => Json(response).into_response(),
+        Err(e) => (e.status_code(), Json(e.into_response())).into_response(),
+    }
 }
 
 /// POST /api/admin/credentials/:id/disabled
@@ -75,6 +87,27 @@ pub async fn get_credential_balance(
 ) -> impl IntoResponse {
     match state.service.get_balance(id).await {
         Ok(response) => Json(response).into_response(),
+        Err(e) => (e.status_code(), Json(e.into_response())).into_response(),
+    }
+}
+
+/// DELETE /api/admin/credentials/:id
+/// 删除指定凭据
+pub async fn delete_credential(
+    State(state): State<AdminState>,
+    Path(id): Path<u64>,
+) -> impl IntoResponse {
+    match state.service.delete_credential(id) {
+        Ok(_) => Json(SuccessResponse::new(format!("凭据 #{} 已删除", id))).into_response(),
+        Err(e) => (e.status_code(), Json(e.into_response())).into_response(),
+    }
+}
+
+/// DELETE /api/admin/credentials/disabled
+/// 批量删除所有禁用的凭据
+pub async fn delete_all_disabled(State(state): State<AdminState>) -> impl IntoResponse {
+    match state.service.delete_all_disabled() {
+        Ok(count) => Json(BulkDeleteResponse::new(count)).into_response(),
         Err(e) => (e.status_code(), Json(e.into_response())).into_response(),
     }
 }

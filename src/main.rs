@@ -102,29 +102,11 @@ async fn main() {
         first_credentials.profile_arn.clone(),
     );
 
-    // 构建 Admin API 路由（如果配置了非空的 admin_api_key）
-    // 安全检查：空字符串被视为未配置，防止空 key 绕过认证
-    let admin_key_valid = config
-        .admin_api_key
-        .as_ref()
-        .map(|k| !k.trim().is_empty())
-        .unwrap_or(false);
-
-    let app = if let Some(admin_key) = &config.admin_api_key {
-        if admin_key.trim().is_empty() {
-            tracing::warn!("admin_api_key 配置为空，Admin API 未启用");
-            anthropic_app
-        } else {
-            let admin_service = admin::AdminService::new(token_manager.clone());
-            let admin_state = admin::AdminState::new(admin_key, admin_service);
-            let admin_app = admin::create_admin_router(admin_state);
-
-            tracing::info!("Admin API 已启用");
-            anthropic_app.nest("/api/admin", admin_app)
-        }
-    } else {
-        anthropic_app
-    };
+    // 构建 Admin API 路由（始终启用，无需认证）
+    let admin_service = admin::AdminService::new(token_manager.clone());
+    let admin_state = admin::AdminState::new(admin_service);
+    let admin_app = admin::create_admin_router(admin_state);
+    let app = anthropic_app.nest("/api/admin", admin_app);
 
     // 启动服务器
     let addr = format!("{}:{}", config.host, config.port);
@@ -134,14 +116,16 @@ async fn main() {
     tracing::info!("  GET  /v1/models");
     tracing::info!("  POST /v1/messages");
     tracing::info!("  POST /v1/messages/count_tokens");
-    if admin_key_valid {
-        tracing::info!("Admin API:");
-        tracing::info!("  GET  /api/admin/credentials");
-        tracing::info!("  POST /api/admin/credentials/:index/disabled");
-        tracing::info!("  POST /api/admin/credentials/:index/priority");
-        tracing::info!("  POST /api/admin/credentials/:index/reset");
-        tracing::info!("  GET  /api/admin/credentials/:index/balance");
-    }
+    tracing::info!("Admin API (无需认证):");
+    tracing::info!("  GET  /api/admin/ui                        - Admin UI");
+    tracing::info!("  GET  /api/admin/credentials               - List credentials");
+    tracing::info!("  POST /api/admin/credentials               - Add credential");
+    tracing::info!("  DELETE /api/admin/credentials/:id         - Delete credential");
+    tracing::info!("  DELETE /api/admin/credentials/disabled    - Delete all disabled");
+    tracing::info!("  POST /api/admin/credentials/:id/disabled  - Toggle disabled");
+    tracing::info!("  POST /api/admin/credentials/:id/priority  - Set priority");
+    tracing::info!("  POST /api/admin/credentials/:id/reset     - Reset failures");
+    tracing::info!("  GET  /api/admin/credentials/:id/balance   - Get balance");
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();

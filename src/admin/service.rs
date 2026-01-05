@@ -2,10 +2,11 @@
 
 use std::sync::Arc;
 
+use crate::kiro::model::credentials::KiroCredentials;
 use crate::kiro::token_manager::MultiTokenManager;
 
 use super::error::AdminServiceError;
-use super::types::{BalanceResponse, CredentialStatusItem, CredentialsStatusResponse};
+use super::types::{AddCredentialRequest, AddCredentialResponse, BalanceResponse, CredentialStatusItem, CredentialsStatusResponse};
 
 /// Admin 服务
 ///
@@ -35,6 +36,8 @@ impl AdminService {
                 expires_at: entry.expires_at,
                 auth_method: entry.auth_method,
                 has_profile_arn: entry.has_profile_arn,
+                used_count: entry.used_count,
+                quota: entry.quota,
             })
             .collect();
 
@@ -103,6 +106,52 @@ impl AdminService {
             usage_percentage,
             next_reset_at: usage.next_date_reset,
         })
+    }
+
+    /// 添加新凭据
+    pub fn add_credential(&self, request: AddCredentialRequest) -> Result<AddCredentialResponse, AdminServiceError> {
+        // 验证 refresh_token
+        if request.refresh_token.is_empty() {
+            return Err(AdminServiceError::InternalError("refresh_token 不能为空".to_string()));
+        }
+
+        // 构建 KiroCredentials
+        let credentials = KiroCredentials {
+            id: None, // 由 token_manager 分配
+            access_token: request.access_token,
+            refresh_token: Some(request.refresh_token),
+            profile_arn: request.profile_arn,
+            expires_at: None,
+            auth_method: Some(request.auth_method),
+            client_id: request.client_id,
+            client_secret: request.client_secret,
+            priority: request.priority,
+        };
+
+        // 添加凭据
+        let id = self.token_manager
+            .add_credential(credentials, request.quota)
+            .map_err(|e| AdminServiceError::InternalError(e.to_string()))?;
+
+        Ok(AddCredentialResponse {
+            success: true,
+            id,
+            message: format!("凭据 #{} 已添加", id),
+        })
+    }
+
+    /// 删除凭据
+    pub fn delete_credential(&self, id: u64) -> Result<(), AdminServiceError> {
+        self.token_manager
+            .delete_credential(id)
+            .map_err(|e| self.classify_error(e, id))
+    }
+
+    /// 批量删除所有禁用的凭据
+    pub fn delete_all_disabled(&self) -> Result<usize, AdminServiceError> {
+        self.token_manager
+            .delete_all_disabled()
+            .map_err(|e| AdminServiceError::InternalError(e.to_string()))
     }
 
     /// 分类简单操作错误（set_disabled, set_priority, reset_and_enable）

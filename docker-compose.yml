@@ -1,0 +1,23 @@
+# Docker Compose để test local trước khi deploy lên Dokploy
+# Chạy: docker-compose up -d
+
+services:
+  kiro-rs:
+    build: .
+    container_name: kiro-rs
+    restart: unless-stopped
+    ports:
+      - "8990:8990"
+    volumes:
+      # Mount thư mục chứa config và credentials
+      - ./data:/app/data
+    environment:
+      - RUST_LOG=info
+    # Health check để kiểm tra service còn sống
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8990/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
