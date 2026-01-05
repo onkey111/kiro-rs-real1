@@ -1,7 +1,7 @@
 # ============================================
 # Stage 1: Build - Biên dịch ứng dụng Rust
 # ============================================
-FROM rust:1.83-slim-bookworm AS builder
+FROM rust:1.87-slim-bookworm AS builder
 
 # Cài đặt các dependencies cần thiết cho build
 RUN apt-get update && apt-get install -y \
